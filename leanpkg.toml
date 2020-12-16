@@ -1,0 +1,8 @@
+[package]
+name = "migrate-dev"
+version = "0.1"
+lean_version = "leanprover-community/lean:3.23.0"
+path = "src"
+
+[dependencies]
+mathlib = {git = "https://github.com/leanprover-community/mathlib", rev = "3a997b1d82ffb27b7627520270bdb912d0a2456d"}
