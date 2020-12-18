@@ -36,7 +36,6 @@ mk :: ( name : option string )
 
 inductive DevOutput
 | CreateMigration
-| GetName -- TODO: do we need this?
 | Reset : ResetReason → DevOutput
 -- This is a user-facing error output, it does need any special handling in the CLI.
 | BrokenMigration : string -> DevOutput
@@ -106,15 +105,12 @@ def checkReset : DiagnoseMigrationHistoryOutput → devState punit :=
 | none := pure ()
 end
 
-def checkName : DevInput → devState DevOutput :=
-λ input, if input.name.is_none then throw DevOutput.GetName else pure DevOutput.CreateMigration
-
 /-- The model implementation of `dev`. -/
 def dev : DevInput → DiagnoseMigrationHistoryOutput → devState DevOutput :=
 λ input projectState,
 checkBrokenMigration projectState >>
   checkReset projectState >>
-  checkName input
+  throw DevOutput.CreateMigration
 
 def runDev : DevInput → DiagnoseMigrationHistoryOutput → DevOutput :=
 λ input diagnostics, match run (dev input diagnostics) with
@@ -145,49 +141,18 @@ begin
 end
 
 /--
-Whenever we are not in a reset situation and there is a `name` parameter in
-DevInput, we will return `CreateMigration`. -/
+Whenever we are not in a reset situation, we will return `CreateMigration`. -/
 theorem devCreateMigration :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
   input.name.is_some →
   projectState.resetReason = none →
   projectState.brokenMigration = none →
-  run (dev input projectState) = except.ok DevOutput.CreateMigration :=
+  run (dev input projectState) = error DevOutput.CreateMigration :=
 begin
   intros input projectState hInputNamePresent hNoReset hNoBrokenMigration,
-  delta dev checkBrokenMigration checkReset checkName,
-  have hName : ¬input.name.is_none, by {
-    rw [option.eq_some_of_is_some hInputNamePresent],
-    exact bool.not_ff
-  },
-  rw [hNoReset, hNoBrokenMigration, bool_eq_false hName],
+  delta dev checkBrokenMigration checkReset,
+  rw [hNoReset, hNoBrokenMigration],
   refl
-end
-
-/--
-If we are not in a state that warrants a reset, and there is no `name` parameter
-in the input, we will ask for it. -/
-theorem devAsksForName :
-  ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
-  projectState.brokenMigration = none → projectState.resetReason = none →
-  (input.name = none ↔ run (dev input projectState) = except.error DevOutput.GetName) :=
-begin
-  intros input projectState hNoBrokenMigration hNoReset,
-  split,
-  {
-    intro hInputNameMissing,
-    delta dev checkBrokenMigration checkReset checkName,
-    simp [hInputNameMissing],
-    rw [hNoBrokenMigration, hNoReset],
-    refl
-  },
-  intro hGetName,
-  by_contradiction,
-  obtain ⟨n, h⟩ : ∃ n, input.name = some n, from option.ne_none_iff_exists'.mp h,
-  have : input.name.is_some = tt := option.is_some_iff_exists.mpr ⟨n, h⟩,
-  have : run (dev input projectState) = except.ok DevOutput.CreateMigration := devCreateMigration input projectState this hNoReset hNoBrokenMigration,
-  have : run (dev input projectState) ≠ except.error DevOutput.GetName, by simp [this],
-  contradiction
 end
 
 /--
