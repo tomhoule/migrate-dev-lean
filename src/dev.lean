@@ -13,16 +13,16 @@ The corresponding control flow in the CLI would be:
 1. Call `RPC dev`. Check the output:
   - Error / BrokenMigration -> display the error (regular user-facing error, no
     CLI code should be needed)
-  - Reset -> Prompt the user to reset with the provided reason. Call `RPC
-    reset`, then proceed with 2.
+  - Reset -> Prompt the user to reset with the provided reason. Call
+    `RPC reset`, then proceed with 2.
   - CreateMigration -> proceed with 2.
-2. Call `RPC applyMigrations`
+2. Call `RPC applyMigrations`
 3. If we have no migration name, prompt for it.
 4. Check for the `--create-only` flag
-  - If it was passed, call `RPC evaluateDataLoss`, show the warnings, `RPC
-    createMigration`. Done.
-  - Otherwise, call `RPC evaluateDataLoss`, potentially ask for confirmation,
-    `RPC createMigration`, `RPC applyMigrations`. Generate the client. Done.
+  - If it was passed, call `RPC evaluateDataLoss`, show the warnings,
+    `RPC createMigration`. Done.
+  - Otherwise, call `RPC evaluateDataLoss`, potentially ask for confirmation,
+    `RPC createMigration`, `RPC applyMigrations`. Generate the client. Done.
 
 Intended JSON-RPC API:
 
