@@ -20,8 +20,8 @@ The corresponding control flow in the CLI would be:
 3. If we have no migration name, prompt for it.
 4. Check for the `--create-only` flag
   - If it was passed, call `RPC createMigration`. Done.
-  - Otherwise, call `RPC evaluateDataLoss`, `RPC createMigration`, `RPC
-    applyMigrations`. Generate the client. Done.
+  - Otherwise, call `RPC evaluateDataLoss`, `RPC createMigration`,
+    `RPC applyMigrations`. Generate the client. Done.
 
 Intended JSON-RPC API:
 
@@ -131,7 +131,7 @@ def dev : DevInput → DiagnoseMigrationHistoryOutput → devState DevOutput :=
 λ input projectState,
 checkBrokenMigration projectState >>
   checkReset projectState >>
-  throw DevOutput.CreateMigration
+  pure DevOutput.CreateMigration
 
 /-- Convenience wrapper around `dev` to make proof types more readable. -/
 def runDev : DevInput → DiagnoseMigrationHistoryOutput → DevOutput :=
