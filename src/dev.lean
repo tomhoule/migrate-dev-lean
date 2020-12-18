@@ -19,9 +19,10 @@ The corresponding control flow in the CLI would be:
 2. Call `RPC applyMigrations`
 3. If we have no migration name, prompt for it.
 4. Check for the `--create-only` flag
-  - If it was passed, call `RPC createMigration`. Done.
-  - Otherwise, call `RPC evaluateDataLoss`, `RPC createMigration`,
-    `RPC applyMigrations`. Generate the client. Done.
+  - If it was passed, call `RPC evaluateDataLoss`, show the warnings, `RPC
+    createMigration`. Done.
+  - Otherwise, call `RPC evaluateDataLoss`, potentially ask for confirmation,
+    `RPC createMigration`, `RPC applyMigrations`. Generate the client. Done.
 
 Intended JSON-RPC API:
 
