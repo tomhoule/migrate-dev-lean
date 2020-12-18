@@ -61,6 +61,8 @@ inductive DevOutput
 -- handling in the CLI.
 | BrokenMigration : string -> DevOutput
 
+open DevOutput
+
 inductive DriftDiagnostic : Type
 | DriftDetected : string -> DriftDiagnostic
 | MigrationFailedToApply : string -> DriftDiagnostic
@@ -115,14 +117,14 @@ instance devStateMonadRun : monad_run (except DevOutput) devState := by { unfold
 /-- Check that no migration (applied or unapplied) is broken. -/
 def checkBrokenMigration : DiagnoseMigrationHistoryOutput → devState punit :=
 λ state, match state.brokenMigration with
-| some name := throw $ DevOutput.BrokenMigration name
+| some name := throw $ BrokenMigration name
 | none := pure ()
 end
 
 /-- Check whether we have a ground for a reset. -/
 def checkReset : DiagnoseMigrationHistoryOutput → devState punit :=
 λ state, match state.resetReason with
-| some reason := throw $ DevOutput.Reset reason
+| some reason := throw $ Reset reason
 | none := pure ()
 end
 
@@ -131,7 +133,7 @@ def dev : DevInput → DiagnoseMigrationHistoryOutput → devState DevOutput :=
 λ input projectState,
 checkBrokenMigration projectState >>
   checkReset projectState >>
-  pure DevOutput.CreateMigration
+  pure CreateMigration
 
 /-- Convenience wrapper around `dev` to make proof types more readable. -/
 def runDev : DevInput → DiagnoseMigrationHistoryOutput → DevOutput :=
@@ -151,7 +153,7 @@ theorem devReset :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
   projectState.brokenMigration = none →
   projectState.resetReason.is_some →
-  ∃ r, runDev input projectState = DevOutput.Reset r :=
+  ∃ r, runDev input projectState = Reset r :=
 begin
   intros input projectState hBroken hReset,
   delta runDev dev checkBrokenMigration checkReset,
@@ -169,7 +171,7 @@ theorem devCreateMigration :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
   projectState.resetReason = none →
   projectState.brokenMigration = none →
-  runDev input projectState = DevOutput.CreateMigration :=
+  runDev input projectState = CreateMigration :=
 begin
   intros input projectState hNoReset hNoBrokenMigration,
   delta runDev dev checkBrokenMigration checkReset,
@@ -184,7 +186,7 @@ for a reset. -/
 theorem devBrokenMigration :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput) (brokenMigrationName : string),
   projectState.brokenMigration = some brokenMigrationName →
-  runDev input projectState = DevOutput.BrokenMigration brokenMigrationName :=
+  runDev input projectState = BrokenMigration brokenMigrationName :=
 begin
   rintros input projectState brokenMigrationName hBroken,
   unfold runDev dev checkBrokenMigration,
