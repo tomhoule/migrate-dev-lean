@@ -1,9 +1,34 @@
 import data.option.basic
 
+/-!
+
+# Model of a `dev` command for the Prisma migration engine
+
+The `dev` command acts as a wrapper around `diagnoseMigrationHistory`. Its role
+is to interpret the diagnostic output, and translate it to a concrete action to
+be performed by the CLI.
+
+The corresponding control flow in the CLI would be:
+
+1. Call `RPC dev`. Check the output:
+  - Error / BrokenMigration -> display the error (regular user-facing error, no CLI code should be needed)
+  - Reset -> Prompt the user to reset with the provided reason. Call `RPC reset`, then proceed with 2.
+  - CreateMigration -> proceed with 2.
+2. Call `RPC applyMigrations`
+3. If we have no migration name, prompt for it.
+4. Check for the `--create-only` flag
+  - If it was passed, call `RPC createMigration`. Done.
+  - Otherwise, call `RPC evaluateDataLoss`, `RPC createMigration`, `RPC applyMigrations`. Generate the client. Done.
+
+-/
+
+open except (error ok)
+
 variables { α : Type }
 universes u v
 
 inductive ResetReason
+| Drifted
 | Unspecified
 
 structure DevInput :=
@@ -13,7 +38,8 @@ inductive DevOutput
 | CreateMigration
 | GetName -- TODO: do we need this?
 | Reset : ResetReason → DevOutput
-| BrokenMigration
+-- This is a user-facing error output, it does need any special handling in the CLI.
+| BrokenMigration : string -> DevOutput
 
 inductive DriftDiagnostic : Type
 | DriftDetected : string -> DriftDiagnostic
@@ -37,10 +63,11 @@ def DiagnoseMigrationHistoryOutput.resetReason : DiagnoseMigrationHistoryOutput 
 λ projectState,
 if (
   ¬projectState.failedMigrationNames.is_nil ||
-  ¬projectState.editedMigrationNames.is_nil ||
-  ¬projectState.drift.is_none
+  ¬projectState.editedMigrationNames.is_nil
 ) then
-    some ResetReason.Unspecified
+  some ResetReason.Unspecified
+else if ¬projectState.drift.is_none then
+  some ResetReason.Drifted
 else
   match projectState.history with
   | some HistoryDiagnostic.MigrationDirectoryIsBehind := some ResetReason.Unspecified
@@ -48,12 +75,12 @@ else
   | _ := none
   end
 
-def DiagnoseMigrationHistoryOutput.hasBrokenMigration : DiagnoseMigrationHistoryOutput → bool :=
+def DiagnoseMigrationHistoryOutput.brokenMigration : DiagnoseMigrationHistoryOutput → option string :=
 λ o,
 match (o.drift, o.errorInUnappliedMigrations) with
-| ⟨some _, _⟩ := tt
-| ⟨_, some _⟩ := tt
-| _ := ff
+| ⟨some (DriftDiagnostic.MigrationFailedToApply name), _⟩ := some name
+| ⟨_, some name⟩ := some name
+| _ := none
 end
 
 example : monad id := by apply_instance
@@ -67,7 +94,10 @@ instance devStateMonadRun : monad_run (except DevOutput) devState := by { unfold
 
 /-- Check that no migration (applied or unapplied) is broken. -/
 def checkBrokenMigration : DiagnoseMigrationHistoryOutput → devState punit :=
-λ state, if state.hasBrokenMigration then throw DevOutput.BrokenMigration else pure ()
+λ state, match state.brokenMigration with
+| some name := throw $ DevOutput.BrokenMigration name
+| none := pure ()
+end
 
 /-- Check whether we have a ground for a reset. -/
 def checkReset : DiagnoseMigrationHistoryOutput → devState punit :=
@@ -86,16 +116,22 @@ checkBrokenMigration projectState >>
   checkReset projectState >>
   checkName input
 
--- -- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
--- Proofs about `migrate dev`'s model defined above. --
--- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
+def runDev : DevInput → DiagnoseMigrationHistoryOutput → DevOutput :=
+λ input diagnostics, match run (dev input diagnostics) with
+| (error output) := output
+| (ok output) := output
+end
+
+-- -- ---- ---- ---- ---- ---- ---- ---- ---- -
+-- Proofs about `dev`'s model defined above. --
+-- ---- ---- ---- ---- ---- ---- ---- ---- ----
 
 /--
 If the migrations are working and we should reset, we will always return
 `Reset`. -/
 theorem devReset :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
-  ¬projectState.hasBrokenMigration →
+  projectState.brokenMigration = none →
   projectState.resetReason.is_some →
   ∃ r, run (dev input projectState) = except.error (DevOutput.Reset r) :=
 begin
@@ -103,8 +139,8 @@ begin
   delta dev checkBrokenMigration checkReset,
   obtain ⟨r, hSome⟩ : ∃ r, projectState.resetReason = some r, from option.is_some_iff_exists.mp hReset,
   existsi r,
-  simp [hBroken, hReset],
-  rw [hSome],
+  simp [hReset],
+  rw [hSome, hBroken],
   refl
 end
 
@@ -115,7 +151,7 @@ theorem devCreateMigration :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
   input.name.is_some →
   projectState.resetReason = none →
-  ¬projectState.hasBrokenMigration →
+  projectState.brokenMigration = none →
   run (dev input projectState) = except.ok DevOutput.CreateMigration :=
 begin
   intros input projectState hInputNamePresent hNoReset hNoBrokenMigration,
@@ -124,7 +160,7 @@ begin
     rw [option.eq_some_of_is_some hInputNamePresent],
     exact bool.not_ff
   },
-  rw [hNoReset, bool_eq_false hNoBrokenMigration, bool_eq_false hName],
+  rw [hNoReset, hNoBrokenMigration, bool_eq_false hName],
   refl
 end
 
@@ -133,7 +169,7 @@ If we are not in a state that warrants a reset, and there is no `name` parameter
 in the input, we will ask for it. -/
 theorem devAsksForName :
   ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
-  ¬projectState.hasBrokenMigration → projectState.resetReason = none →
+  projectState.brokenMigration = none → projectState.resetReason = none →
   (input.name = none ↔ run (dev input projectState) = except.error DevOutput.GetName) :=
 begin
   intros input projectState hNoBrokenMigration hNoReset,
@@ -141,8 +177,8 @@ begin
   {
     intro hInputNameMissing,
     delta dev checkBrokenMigration checkReset checkName,
-    simp [hInputNameMissing, hNoReset, hNoBrokenMigration],
-    rw [hNoReset],
+    simp [hInputNameMissing],
+    rw [hNoBrokenMigration, hNoReset],
     refl
   },
   intro hGetName,
@@ -159,10 +195,10 @@ end
 migration doesn't apply cleanly to the dev database. It never prematurely asks
 for a reset. -/
 theorem devBrokenMigration :
-  ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput),
-  projectState.hasBrokenMigration → run (dev input projectState) = except.error DevOutput.BrokenMigration :=
+  ∀ (input : DevInput) (projectState : DiagnoseMigrationHistoryOutput) (brokenMigrationName : string),
+  projectState.brokenMigration = some brokenMigrationName → run (dev input projectState) = except.error (DevOutput.BrokenMigration brokenMigrationName) :=
 begin
-  intros input projectState hBroken,
+  rintros input projectState brokenMigrationName hBroken,
   unfold dev checkBrokenMigration,
   simpa [hBroken]
 end
