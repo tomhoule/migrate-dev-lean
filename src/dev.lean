@@ -2,15 +2,15 @@ import data.option.basic
 
 /-!
 
-# Model of a `dev` command for the Prisma migration engine
+# Model of the Prisma migration engine `devDiagnostic` command
 
-The `dev` RPC command acts as a wrapper around `diagnoseMigrationHistory`. Its
+The `devDiagnostic` RPC command acts as a wrapper around `diagnoseMigrationHistory`. Its
 role is to interpret the diagnostic output, and translate it to a concrete
 action to be performed by the CLI.
 
 The corresponding control flow in the CLI would be:
 
-1. Call `RPC dev`. Check the output:
+1. Call `RPC devDiagnostic`. Check the output:
   - Error / BrokenMigration -> display the error (regular user-facing error, no
     CLI code should be needed)
   - Reset -> Prompt the user to reset with the provided reason. Call
@@ -24,12 +24,12 @@ The corresponding control flow in the CLI would be:
   - Otherwise, call `RPC evaluateDataLoss`, potentially ask for confirmation,
     `RPC createMigration`, `RPC applyMigrations`. Generate the client. Done.
 
-Intended JSON-RPC API:
+Implemented JSON-RPC API:
 
 ```typescript
-interface DevInput {}
+interface DevDiagnosticInput {}
 
-interface DevOutput {
+interface DevDiagnosticOutput {
   action: DevAction
 }
 
