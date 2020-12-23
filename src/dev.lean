@@ -8,7 +8,7 @@ The `devDiagnostic` RPC command acts as a wrapper around `diagnoseMigrationHisto
 role is to interpret the diagnostic output, and translate it to a concrete
 action to be performed by the CLI.
 
-The corresponding control flow in the CLI would be:
+The corresponding control flow in the CLI should be:
 
 1. Call `RPC devDiagnostic`. Check the output:
   - Error / BrokenMigration -> display the error (regular user-facing error, no
@@ -34,8 +34,8 @@ interface DevDiagnosticOutput {
 }
 
 type DevAction =
-  { tag: "Reset", reason: string }
-  | { tag: "CreateMigration" }
+  { tag: "reset", reason: string }
+  | { tag: "createMigration" }
 
 ```
 
